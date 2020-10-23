@@ -1,4 +1,7 @@
-FROM openresty/openresty:1.15.8.3-1-alpine-fat-nosse42
+ARG RESTY_IMAGE_BASE="openresty/openresty"
+ARG RESTY_IMAGE_TAG="1.15.8.3-1-alpine-fat-nosse42"
+
+FROM ${RESTY_IMAGE_BASE}:${RESTY_IMAGE_TAG}
 
 LABEL maintainer="kuwork <kuwork@126.com>" \
     architecture="alpine" \
@@ -39,6 +42,15 @@ RUN apk add --update g++ \
     apk del g++ \
             gcc \
             make \
-            lzip \
             wget
+
+ # Copy nginx configuration files
+#COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
+#COPY nginx.vh.default.conf /etc/nginx/conf.d/default.conf
+
+CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+
+# Use SIGQUIT instead of default SIGTERM to cleanly drain requests
+# See https://github.com/openresty/docker-openresty/blob/master/README.md#tips--pitfalls
+STOPSIGNAL SIGQUIT
 

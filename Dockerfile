@@ -26,12 +26,12 @@ WORKDIR $TEMP_DIR
 RUN apk add --update g++ \
                      gcc \
                      make \
-                     wget \
+                     curl \
                      libjpeg-turbo-dev \
                      libpng-dev \
                      libtool \
                      libgomp && \
-    wget --no-check-certificate $PKGSOURCE -O $GM_PATH.tar.gz && \
+    curl -fSL $PKGSOURCE -o $GM_PATH.tar.gz && \
     tar xzf $GM_PATH.tar.gz && \
     cd $GM_PATH && \
     ./configure && \
@@ -41,9 +41,8 @@ RUN apk add --update g++ \
     rm -rf $GM_PATH.tar.gz &&\
     apk del g++ \
             gcc \
-            make \
-            wget
-
+            make 
+            
  # Copy nginx configuration files
 #COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 #COPY nginx.vh.default.conf /etc/nginx/conf.d/default.conf

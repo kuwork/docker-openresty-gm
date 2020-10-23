@@ -16,6 +16,7 @@ LABEL maintainer="kuwork <kuwork@126.com>" \
     org.opencontainers.image.version="v1.0" \
     org.opencontainers.image.revision=$VCS_REF \
     org.opencontainers.image.created=$BUILD_DATE
+ARG RESTY_J="4"
 ENV TEMP_DIR=/tmp/
 ENV PKGNAME=graphicsmagick
 ENV GM_VERSION=1.3.35
@@ -30,13 +31,15 @@ RUN apk add --update g++ \
                      libjpeg-turbo-dev \
                      libpng-dev \
                      libtool \
-                     libgomp && \
+                     libgomp \
+                     yasm \
+                     ffmpeg && \
     curl -fSL $PKGSOURCE -o $GM_PATH.tar.gz && \
     tar xzf $GM_PATH.tar.gz && \
     cd $GM_PATH && \
     ./configure && \
-    make && \
-    make install && \
+    make -j${RESTY_J}  && \
+    make -j${RESTY_J}  install && \
     cd .. && \
     rm -rf $GM_PATH.tar.gz &&\
     apk del g++ \

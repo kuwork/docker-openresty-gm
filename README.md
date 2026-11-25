@@ -37,7 +37,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The workflow pushes six tags: `alpine`, `alpine-1.0.0`, `alpine-fat`, `alpine-fat-1.0.0`, `alpine-fat-gm`, and `alpine-fat-gm-1.0.0`. Every tag is a multi-architecture manifest containing `linux/amd64` and `linux/arm64`, so Docker automatically selects the matching architecture. The two architectures are built and verified in parallel on native runners, then each runner pushes per-architecture tags such as `alpine-amd64` and `alpine-arm64`. A final publish job merges them into the six multi-architecture tags, so the release is published only after both architectures pass verification. GitHub-hosted runners use the official download sources rather than the local mirror defaults.
+The workflow pushes six tags: `alpine`, `alpine-1.0.0`, `alpine-fat`, `alpine-fat-1.0.0`, `alpine-fat-gm`, and `alpine-fat-gm-1.0.0`. Every tag is a multi-architecture manifest containing `linux/amd64` and `linux/arm64`, so Docker automatically selects the matching architecture. The two architectures are built and verified in parallel on native runners, then each runner pushes per-architecture tags such as `alpine-amd64` and `alpine-arm64`. A final publish job merges them into the six multi-architecture tags and then deletes the per-architecture tags through the Docker Hub API, so only the six release tags remain. The release is published only after both architectures pass verification. GitHub-hosted runners use the official download sources rather than the local mirror defaults.
 
 # Prerequisites
 * [Git][8]

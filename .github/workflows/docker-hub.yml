@@ -162,3 +162,25 @@ jobs:
             docker buildx imagetools inspect "${DOCKER_IMAGE}:${tag}-${VERSION}"
             docker buildx imagetools inspect "${DOCKER_IMAGE}:${tag}"
           done
+
+      - name: Delete per-architecture intermediate tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          HUB_TOKEN=$(curl --fail --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | jq --raw-output .token)
+          for tag in alpine alpine-fat alpine-fat-gm; do
+            for arch in amd64 arm64; do
+              echo "Deleting ${DOCKER_IMAGE}:${tag}-${arch}"
+              curl --fail --silent --show-error \
+                --request DELETE \
+                --header "Authorization: Bearer ${HUB_TOKEN}" \
+                "https://hub.docker.com/v2/repositories/${DOCKER_IMAGE}/tags/${tag}-${arch}/" \
+                > /dev/null
+            done
+          done

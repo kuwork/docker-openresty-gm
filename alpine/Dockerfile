@@ -37,12 +37,10 @@ ARG RESTY_J="1"
 # https://github.com/openresty/openresty-packaging/blob/master/alpine/openresty/APKBUILD
 ARG RESTY_CONFIG_OPTIONS="\
     --with-compat \
+    --with-file-aio \
     --without-http_rds_json_module \
     --without-http_rds_csv_module \
     --without-lua_rds_parser \
-    --without-mail_pop3_module \
-    --without-mail_imap_module \
-    --without-mail_smtp_module \
     --with-http_addition_module \
     --with-http_auth_request_module \
     --with-http_dav_module \

@@ -28,7 +28,7 @@ Add the following secrets under **Settings → Secrets and variables → Actions
 * `DOCKERHUB_USERNAME`: Docker Hub username with push access to `kuwork/openresty`.
 * `DOCKERHUB_TOKEN`: Docker Hub access token.
 
-To test the build without Docker Hub credentials, open **Actions → Publish Docker images → Run workflow**. Manual runs build all three images for both `linux/amd64` and `linux/arm64`, verify each architecture, and use a temporary registry on the runner. They skip Docker Hub login and publishing, so no images or tags leave the runner.
+To test the build without Docker Hub credentials, open **Actions → Publish Docker images → Run workflow**. Manual runs build all three images in parallel on two native runners: `ubuntu-latest` for `linux/amd64` and `ubuntu-24.04-arm` for `linux/arm64` (free for public repositories). Each runner verifies its own architecture natively using a temporary registry, without QEMU emulation. Manual runs skip Docker Hub login and publishing, so no images or tags leave the runners.
 
 Push a semantic version tag to build, verify, and publish all three images:
 
@@ -37,7 +37,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The workflow pushes six tags: `alpine`, `alpine-1.0.0`, `alpine-fat`, `alpine-fat-1.0.0`, `alpine-fat-gm`, and `alpine-fat-gm-1.0.0`. Every tag is a multi-architecture manifest containing `linux/amd64` and `linux/arm64`, so Docker automatically selects the matching architecture. The release is published only after both architectures pass verification. GitHub-hosted runners use the official download sources rather than the local mirror defaults.
+The workflow pushes six tags: `alpine`, `alpine-1.0.0`, `alpine-fat`, `alpine-fat-1.0.0`, `alpine-fat-gm`, and `alpine-fat-gm-1.0.0`. Every tag is a multi-architecture manifest containing `linux/amd64` and `linux/arm64`, so Docker automatically selects the matching architecture. The two architectures are built and verified in parallel on native runners, then each runner pushes per-architecture tags such as `alpine-amd64` and `alpine-arm64`. A final publish job merges them into the six multi-architecture tags, so the release is published only after both architectures pass verification. GitHub-hosted runners use the official download sources rather than the local mirror defaults.
 
 # Prerequisites
 * [Git][8]

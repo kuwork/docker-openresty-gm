@@ -12,14 +12,24 @@ permissions:
 env:
   DOCKER_IMAGE: kuwork/openresty
   LOCAL_IMAGE: localhost:5000/kuwork/openresty
-  PLATFORMS: linux/amd64,linux/arm64
   RESTY_IMAGE_BASE: alpine
   RESTY_OPENSSL_URL_BASE: https://www.openssl.org/source
   RESTY_PCRE_URL_BASE: https://github.com/PCRE2Project/pcre2/releases/download
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Check out repository
@@ -35,12 +45,6 @@ jobs:
             echo "Release tag must use the vX.Y.Z format, for example v1.0.0."
             exit 1
           fi
-          echo "VERSION=${RELEASE_TAG#v}" >> "${GITHUB_ENV}"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -65,11 +69,13 @@ jobs:
           echo "Temporary build registry did not become ready."
           exit 1
 
-      - name: Build all three multi-architecture images
+      - name: Build all three images for ${{ matrix.platform }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           docker buildx build \
-            --platform "${PLATFORMS}" \
+            --platform "${PLATFORM}" \
             --push \
             --build-arg RESTY_IMAGE_BASE="${RESTY_IMAGE_BASE}" \
             --build-arg RESTY_OPENSSL_URL_BASE="${RESTY_OPENSSL_URL_BASE}" \
@@ -80,7 +86,7 @@ jobs:
             .
 
           docker buildx build \
-            --platform "${PLATFORMS}" \
+            --platform "${PLATFORM}" \
             --push \
             --build-arg RESTY_FAT_IMAGE_BASE="${LOCAL_IMAGE}" \
             --build-arg RESTY_FAT_IMAGE_TAG=alpine \
@@ -90,7 +96,7 @@ jobs:
             .
 
           docker buildx build \
-            --platform "${PLATFORMS}" \
+            --platform "${PLATFORM}" \
             --push \
             --build-arg RESTY_IMAGE_BASE="${LOCAL_IMAGE}" \
             --build-arg RESTY_IMAGE_TAG=alpine-fat \
@@ -99,15 +105,14 @@ jobs:
             --tag "${LOCAL_IMAGE}:alpine-fat-gm" \
             .
 
-      - name: Verify both architectures
+      - name: Verify ${{ matrix.platform }} natively
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          for platform in linux/amd64 linux/arm64; do
-            echo "Verifying ${platform}"
-            docker run --rm --platform "${platform}" "${LOCAL_IMAGE}:alpine" openresty -V
-            docker run --rm --platform "${platform}" "${LOCAL_IMAGE}:alpine-fat" luarocks --version
-            docker run --rm --platform "${platform}" "${LOCAL_IMAGE}:alpine-fat-gm" gm version
-          done
+          docker run --rm --platform "${PLATFORM}" "${LOCAL_IMAGE}:alpine" openresty -V
+          docker run --rm --platform "${PLATFORM}" "${LOCAL_IMAGE}:alpine-fat" luarocks --version
+          docker run --rm --platform "${PLATFORM}" "${LOCAL_IMAGE}:alpine-fat-gm" gm version
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push' && github.ref_type == 'tag'
@@ -116,16 +121,44 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Publish six multi-architecture Docker Hub tags
+      - name: Push ${{ matrix.arch }} image tags
         if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           for tag in alpine alpine-fat alpine-fat-gm; do
-            versioned_tag="${tag}-${VERSION}"
             docker buildx imagetools create \
-              --tag "${DOCKER_IMAGE}:${versioned_tag}" \
-              --tag "${DOCKER_IMAGE}:${tag}" \
+              --tag "${DOCKER_IMAGE}:${tag}-${ARCH}" \
               "${LOCAL_IMAGE}:${tag}"
-            docker buildx imagetools inspect "${DOCKER_IMAGE}:${versioned_tag}"
+          done
+
+  publish:
+    name: Publish multi-architecture tags
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Merge architectures into six multi-architecture tags
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          for tag in alpine alpine-fat alpine-fat-gm; do
+            docker buildx imagetools create \
+              --tag "${DOCKER_IMAGE}:${tag}-${VERSION}" \
+              --tag "${DOCKER_IMAGE}:${tag}" \
+              "${DOCKER_IMAGE}:${tag}-amd64" \
+              "${DOCKER_IMAGE}:${tag}-arm64"
+            docker buildx imagetools inspect "${DOCKER_IMAGE}:${tag}-${VERSION}"
             docker buildx imagetools inspect "${DOCKER_IMAGE}:${tag}"
           done

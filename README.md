@@ -7,6 +7,38 @@
 * Integrated GeoIP REST Api (thanks to [Telize][2])
 * Lightweight image based on [openresty/openresty:alpine-fat flavor][5]
 
+# Release versions
+
+Each Git tag `vX.Y.Z` corresponds to an image release `X.Y.Z`. The component versions for each release are listed below.
+
+| Git tag | Image release | Alpine | OpenResty | OpenSSL | PCRE2 | LuaRocks | GraphicsMagick |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `v1.0.0` | `1.0.0` | `3.24.3` | `1.31.9.1` | `3.5.8` | `10.49` | `3.13.0` | `1.3.49` |
+
+Release `1.0.0` publishes the following image tags:
+
+* `kuwork/openresty:alpine-1.0.0`: Alpine, OpenResty and the RTMP module.
+* `kuwork/openresty:alpine-fat-1.0.0`: adds LuaRocks and build tools.
+* `kuwork/openresty:alpine-fat-gm-1.0.0`: adds GraphicsMagick and FFmpeg.
+
+## Automated Docker Hub releases
+
+Add the following secrets under **Settings → Secrets and variables → Actions**:
+
+* `DOCKERHUB_USERNAME`: Docker Hub username with push access to `kuwork/openresty`.
+* `DOCKERHUB_TOKEN`: Docker Hub access token.
+
+To test the build without Docker Hub credentials, open **Actions → Publish Docker images → Run workflow**. Manual runs build and verify all three images but skip the login and push steps.
+
+Push a semantic version tag to build, verify, and publish all three images:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow pushes six tags: `alpine`, `alpine-1.0.0`, `alpine-fat`, `alpine-fat-1.0.0`, `alpine-fat-gm`, and `alpine-fat-gm-1.0.0`. GitHub-hosted runners use the official download sources rather than the local mirror defaults.
+
 # Prerequisites
 * [Git][8]
 * [Docker][9], required for single server deployment only.
@@ -34,6 +66,9 @@ sudo docker exec my_streaming_server sh -c "openresty -t && openresty -s reload"
 rtmp://*streaming_server_ip_or_domain*:1935/*my_live_stream*/*my_stream_name* and playback with hls url http://*streaming_server_ip_or_domain*/hls/*my_stream_name*
 
 # Building from source
+
+The build scripts use the DaoCloud Docker Hub mirror for Alpine and a GitHub proxy for PCRE2 by default. OpenSSL is downloaded from its official source site. Set `RESTY_IMAGE_BASE`, `RESTY_OPENSSL_URL_BASE`, or `RESTY_PCRE_URL_BASE` to override these download sources.
+
 ```bash
 git clone https://github.com/kuwork/docker-openresty-gm.git
 cd docker-openresty-gm

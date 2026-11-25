@@ -1,0 +1,64 @@
+name: Publish Docker images
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_IMAGE: kuwork/openresty
+  RESTY_IMAGE_BASE: alpine
+  RESTY_OPENSSL_URL_BASE: https://www.openssl.org/source
+  RESTY_PCRE_URL_BASE: https://github.com/PCRE2Project/pcre2/releases/download
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate release tag
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must use the vX.Y.Z format, for example v1.0.0."
+            exit 1
+          fi
+          echo "VERSION=${RELEASE_TAG#v}" >> "${GITHUB_ENV}"
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build all three images
+        run: bash ./build.sh
+
+      - name: Verify images
+        run: |
+          set -euo pipefail
+          docker run --rm "${DOCKER_IMAGE}:alpine" openresty -V
+          docker run --rm "${DOCKER_IMAGE}:alpine-fat" luarocks --version
+          docker run --rm "${DOCKER_IMAGE}:alpine-fat-gm" gm version
+
+      - name: Push six Docker Hub tags
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          for tag in alpine alpine-fat alpine-fat-gm; do
+            versioned_tag="${tag}-${VERSION}"
+            docker tag "${DOCKER_IMAGE}:${tag}" "${DOCKER_IMAGE}:${versioned_tag}"
+            docker push "${DOCKER_IMAGE}:${versioned_tag}"
+            docker push "${DOCKER_IMAGE}:${tag}"
+          done

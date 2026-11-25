@@ -11,6 +11,8 @@ permissions:
 
 env:
   DOCKER_IMAGE: kuwork/openresty
+  LOCAL_IMAGE: localhost:5000/kuwork/openresty
+  PLATFORMS: linux/amd64,linux/arm64
   RESTY_IMAGE_BASE: alpine
   RESTY_OPENSSL_URL_BASE: https://www.openssl.org/source
   RESTY_PCRE_URL_BASE: https://github.com/PCRE2Project/pcre2/releases/download
@@ -35,6 +37,78 @@ jobs:
           fi
           echo "VERSION=${RELEASE_TAG#v}" >> "${GITHUB_ENV}"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Start temporary build registry
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name openresty-build-registry \
+            --publish 5000:5000 \
+            --restart=always \
+            registry:2
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:5000/v2/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs openresty-build-registry
+          echo "Temporary build registry did not become ready."
+          exit 1
+
+      - name: Build all three multi-architecture images
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform "${PLATFORMS}" \
+            --push \
+            --build-arg RESTY_IMAGE_BASE="${RESTY_IMAGE_BASE}" \
+            --build-arg RESTY_OPENSSL_URL_BASE="${RESTY_OPENSSL_URL_BASE}" \
+            --build-arg RESTY_PCRE_URL_BASE="${RESTY_PCRE_URL_BASE}" \
+            --build-arg RESTY_J=4 \
+            --file alpine/Dockerfile \
+            --tag "${LOCAL_IMAGE}:alpine" \
+            .
+
+          docker buildx build \
+            --platform "${PLATFORMS}" \
+            --push \
+            --build-arg RESTY_FAT_IMAGE_BASE="${LOCAL_IMAGE}" \
+            --build-arg RESTY_FAT_IMAGE_TAG=alpine \
+            --build-arg RESTY_LUAROCKS_VERSION=3.13.0 \
+            --file alpine/Dockerfile.fat \
+            --tag "${LOCAL_IMAGE}:alpine-fat" \
+            .
+
+          docker buildx build \
+            --platform "${PLATFORMS}" \
+            --push \
+            --build-arg RESTY_IMAGE_BASE="${LOCAL_IMAGE}" \
+            --build-arg RESTY_IMAGE_TAG=alpine-fat \
+            --build-arg RESTY_J=4 \
+            --file Dockerfile \
+            --tag "${LOCAL_IMAGE}:alpine-fat-gm" \
+            .
+
+      - name: Verify both architectures
+        run: |
+          set -euo pipefail
+          for platform in linux/amd64 linux/arm64; do
+            echo "Verifying ${platform}"
+            docker run --rm --platform "${platform}" "${LOCAL_IMAGE}:alpine" openresty -V
+            docker run --rm --platform "${platform}" "${LOCAL_IMAGE}:alpine-fat" luarocks --version
+            docker run --rm --platform "${platform}" "${LOCAL_IMAGE}:alpine-fat-gm" gm version
+          done
+
       - name: Log in to Docker Hub
         if: github.event_name == 'push' && github.ref_type == 'tag'
         uses: docker/login-action@v3
@@ -42,23 +116,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build all three images
-        run: bash ./build.sh
-
-      - name: Verify images
-        run: |
-          set -euo pipefail
-          docker run --rm "${DOCKER_IMAGE}:alpine" openresty -V
-          docker run --rm "${DOCKER_IMAGE}:alpine-fat" luarocks --version
-          docker run --rm "${DOCKER_IMAGE}:alpine-fat-gm" gm version
-
-      - name: Push six Docker Hub tags
+      - name: Publish six multi-architecture Docker Hub tags
         if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
           set -euo pipefail
           for tag in alpine alpine-fat alpine-fat-gm; do
             versioned_tag="${tag}-${VERSION}"
-            docker tag "${DOCKER_IMAGE}:${tag}" "${DOCKER_IMAGE}:${versioned_tag}"
-            docker push "${DOCKER_IMAGE}:${versioned_tag}"
-            docker push "${DOCKER_IMAGE}:${tag}"
+            docker buildx imagetools create \
+              --tag "${DOCKER_IMAGE}:${versioned_tag}" \
+              --tag "${DOCKER_IMAGE}:${tag}" \
+              "${LOCAL_IMAGE}:${tag}"
+            docker buildx imagetools inspect "${DOCKER_IMAGE}:${versioned_tag}"
+            docker buildx imagetools inspect "${DOCKER_IMAGE}:${tag}"
           done
